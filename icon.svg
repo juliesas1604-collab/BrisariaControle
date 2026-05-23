@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="40" fill="#1B4332"/>
+  <!-- Folha estilizada -->
+  <path d="M96 32 C60 52 44 80 50 110 C56 138 76 152 96 158 C116 152 136 138 142 110 C148 80 132 52 96 32Z"
+        fill="#52B788" opacity="0.9"/>
+  <path d="M96 32 C96 80 80 120 60 145" stroke="#D8F3DC" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M96 70 C84 78 72 82 62 80" stroke="#D8F3DC" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M96 95 C108 103 120 107 130 105" stroke="#D8F3DC" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M96 118 C86 124 76 126 68 124" stroke="#D8F3DC" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+</svg>
