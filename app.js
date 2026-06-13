@@ -610,9 +610,36 @@ function showToast(msg) {
   t._timer = setTimeout(() => t.classList.remove('show'), 2500);
 }
 
+// ─── SINCRONIZAÇÃO COM SHEETS ─────────────────────────────────
+async function sincronizarDoSheets() {
+  if (!CONFIG.scriptUrl) return;
+
+  const statusEl = document.getElementById('sync-status');
+  if (statusEl) { statusEl.textContent = '🔄 Sincronizando...'; statusEl.style.display = 'block'; }
+
+  try {
+    const res  = await fetch(`${CONFIG.scriptUrl}?action=historico`);
+    const data = await res.json();
+
+    if (data.vendas)  DB._set('brisaria_vendas',  data.vendas);
+    if (data.compras) DB._set('brisaria_compras', data.compras);
+    if (data.saidas)  DB._set('brisaria_saidas',  data.saidas);
+
+    if (statusEl) { statusEl.textContent = '✅ Sincronizado'; setTimeout(() => { statusEl.style.display = 'none'; }, 2000); }
+
+    // Atualiza o dashboard se estiver nele
+    if (document.getElementById('content')) navigate(currentPage);
+
+  } catch (err) {
+    console.warn('Sem conexão, usando dados locais');
+    if (statusEl) { statusEl.textContent = '📴 Offline — dados locais'; setTimeout(() => { statusEl.style.display = 'none'; }, 3000); }
+  }
+}
+
 // ─── INIT ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   navigate('dashboard');
+  sincronizarDoSheets();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
