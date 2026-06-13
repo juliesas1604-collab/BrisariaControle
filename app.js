@@ -4,6 +4,7 @@ const CONFIG = {
 };
 
 // ─── PRODUTOS ────────────────────────────────────────────────
+// [código, nome, categoria, preço venda, preço custo, estoque mínimo]
 const PRODUTOS = [
   ["P001","Tabaco Amsterdam",            "Tabaco",    18, 0,  5],
   ["P002","Tabaco Acrema 20g",           "Tabaco",    18, 0,  5],
@@ -28,7 +29,33 @@ const PRODUTOS = [
   ["P021","Tesoura Dobrável Tonabê",     "Acessório", 12, 0,  3],
   ["P022","Bic (Isqueiro)",              "Acessório",  9, 0,  5],
   ["P023","Múltiplos Produtos (combo)",  "Combo",      0, 0,  0],
+  ["P024","Porta Bic Brisaria",          "Acessório", 15, 9,  5],
 ];
+
+// ─── PRODUTOS EXTRAS (cadastrados pelo app) ──────────────────
+(function carregarProdutosExtras() {
+  const extras = JSON.parse(localStorage.getItem('brisaria_produtos_extras') || '[]');
+  extras.forEach(p => {
+    if (!PRODUTOS.find(x => x[0] === p[0])) PRODUTOS.push(p);
+  });
+})();
+
+// ─── SINCRONIZAÇÃO COM APPS SCRIPT ───────────────────────────
+function _enviarParaScript(payload) {
+  if (!CONFIG.scriptUrl) return;
+  fetch(CONFIG.scriptUrl, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+}
+
+function _deletarNoScript(tipo, id) {
+  if (!CONFIG.scriptUrl) return;
+  fetch(CONFIG.scriptUrl, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'deletar', tipo, id }),
+  }).catch(() => {});
+}
 
 // ─── DATA LAYER (localStorage + Apps Script) ─────────────────
 const DB = {
@@ -38,29 +65,47 @@ const DB = {
   vendas: {
     all: () => DB._get('brisaria_vendas'),
     add: (v) => {
+      const id = Date.now();
+      const registro = { ...v, id };
       const a = DB.vendas.all();
-      a.push({ ...v, id: Date.now() });
+      a.push(registro);
       DB._set('brisaria_vendas', a);
+      _enviarParaScript({ action: 'venda', ...registro });
     },
-    del: (id) => DB._set('brisaria_vendas', DB.vendas.all().filter(x => x.id !== id)),
+    del: (id) => {
+      DB._set('brisaria_vendas', DB.vendas.all().filter(x => x.id !== id));
+      _deletarNoScript('venda', id);
+    },
   },
   compras: {
     all: () => DB._get('brisaria_compras'),
     add: (c) => {
+      const id = Date.now();
+      const registro = { ...c, id };
       const a = DB.compras.all();
-      a.push({ ...c, id: Date.now() });
+      a.push(registro);
       DB._set('brisaria_compras', a);
+      _enviarParaScript({ action: 'compra', ...registro });
     },
-    del: (id) => DB._set('brisaria_compras', DB.compras.all().filter(x => x.id !== id)),
+    del: (id) => {
+      DB._set('brisaria_compras', DB.compras.all().filter(x => x.id !== id));
+      _deletarNoScript('compra', id);
+    },
   },
   saidas: {
     all: () => DB._get('brisaria_saidas'),
     add: (s) => {
+      const id = Date.now();
+      const registro = { ...s, id };
       const a = DB.saidas.all();
-      a.push({ ...s, id: Date.now() });
+      a.push(registro);
       DB._set('brisaria_saidas', a);
+      _enviarParaScript({ action: 'saida', ...registro });
     },
-    del: (id) => DB._set('brisaria_saidas', DB.saidas.all().filter(x => x.id !== id)),
+    del: (id) => {
+      DB._set('brisaria_saidas', DB.saidas.all().filter(x => x.id !== id));
+      _deletarNoScript('saida', id);
+    },
   },
   estoqueInicial: {
     all: () => JSON.parse(localStorage.getItem('brisaria_estoque') || '{}'),
@@ -138,6 +183,7 @@ function navigate(page) {
     compra:    'Registrar Compra',
     estoque:   'Estoque',
     historico: 'Histórico',
+    produtos:  'Cadastro de Produtos',
   };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('content').innerHTML = views[page]();
@@ -152,11 +198,15 @@ const views = {
     const resultClass = resultadoMes >= 0 ? 'card-green' : 'card-red';
 
     const alertas = PRODUTOS
+      .filter(p => p[5] > 0 || true)
       .map(p => ({ nome: p[1], atual: calcEstoque(p[1]), min: p[5] }))
-      .filter(p => p.min >= 0 && p.nome !== 'Múltiplos Produtos (combo)' && p.nome !== 'Tabaco Solto (dose)')
+      .filter(p => p.atual <= p.min && p.min >= 0 && p.nome !== 'Múltiplos Produtos (combo)' && p.nome !== 'Tabaco Solto (dose)')
       .filter(p => p.atual <= 0 || p.atual <= p.min);
 
-    const ultimasVendas = DB.vendas.all().sort((a, b) => b.id - a.id).slice(0, 8);
+    const ultimasVendas = DB.vendas.all()
+      .sort((a, b) => b.id - a.id)
+      .slice(0, 8);
+
     const mesNome = new Date().toLocaleDateString('pt-BR', { month: 'long' });
 
     return `
@@ -353,10 +403,62 @@ const views = {
     `;
   },
 
+  produtos() {
+    const cats = ['Tabaco','Seda','Piteira','Cuia','Kit','Acessório','Combo'];
+    const lista = PRODUTOS.filter(p => p[1] !== 'Múltiplos Produtos (combo)');
+    return `
+      <form id="form-produto" class="form">
+        <div class="section-title" style="margin-top:0">Novo Produto</div>
+        <div class="form-group">
+          <label>Nome do produto</label>
+          <input type="text" name="nome" placeholder="Ex: Porta Bic Brisaria" required>
+        </div>
+        <div class="form-group">
+          <label>Categoria</label>
+          <select name="categoria" required>
+            <option value="">Selecione...</option>
+            ${cats.map(c => `<option value="${c}">${c}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Preço venda (R$)</label>
+            <input type="number" name="precoVenda" placeholder="0.00" step="0.01" min="0" required>
+          </div>
+          <div class="form-group">
+            <label>Preço custo (R$)</label>
+            <input type="number" name="precoCusto" placeholder="0.00" step="0.01" min="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Estoque mínimo (alerta)</label>
+          <input type="number" name="estoqueMin" value="3" min="0">
+        </div>
+        <button type="submit" class="btn-primary">+ Cadastrar Produto</button>
+      </form>
+
+      <div class="section-title">Produtos Cadastrados</div>
+      <div class="transaction-list">
+        ${lista.map(p => `
+          <div class="transaction-item">
+            <div class="transaction-main">
+              <span class="transaction-desc">${p[1]}</span>
+              <span class="transaction-value green">${fmt.money(p[3])}</span>
+            </div>
+            <div class="transaction-sub">
+              <span>${p[2]} · mín: ${p[5]} un.</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  },
+
   historico() {
-    const vendas  = DB.vendas.all().map(v  => ({ ...v, _tipo: 'Venda',  _cor: 'green', _valor: v.valor,     _desc: v.produto }));
-    const compras = DB.compras.all().map(c  => ({ ...c, _tipo: 'Compra', _cor: 'red',   _valor: c.custoTotal, _desc: c.produto }));
-    const saidas  = DB.saidas.all().map(s   => ({ ...s, _tipo: 'Saída',  _cor: 'red',   _valor: s.valor,      _desc: s.descricao }));
+    const vendas  = DB.vendas.all().map(v  => ({ ...v, _tipo: 'Venda',  _cor: 'green', _valor: v.valor,      _desc: v.produto }));
+    const compras = DB.compras.all().map(c  => ({ ...c, _tipo: 'Compra', _cor: 'red',   _valor: c.custoTotal,  _desc: c.produto }));
+    const saidas  = DB.saidas.all().map(s   => ({ ...s, _tipo: 'Saída',  _cor: 'red',   _valor: s.valor,       _desc: s.descricao }));
+
     const todos = [...vendas, ...compras, ...saidas].sort((a, b) => b.id - a.id);
 
     if (todos.length === 0) {
@@ -400,11 +502,11 @@ function bindEvents(page) {
     });
 
     const selProduto = document.getElementById('sel-produto');
-    const inpQtd     = document.getElementById('inp-qtd');
-    const inpValor   = document.getElementById('inp-valor');
+    const inpQtd   = document.getElementById('inp-qtd');
+    const inpValor = document.getElementById('inp-valor');
 
     function atualizarPreco() {
-      const opt   = selProduto.selectedOptions[0];
+      const opt = selProduto.selectedOptions[0];
       const preco = parseFloat(opt?.dataset.preco || 0);
       const qtd   = parseInt(inpQtd.value) || 1;
       if (preco > 0) inpValor.value = (preco * qtd).toFixed(2);
@@ -417,12 +519,12 @@ function bindEvents(page) {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(this));
       if (!data.produto) return;
+      DB.vendas.add(data);
 
       const btn = this.querySelector('[type=submit]');
       btn.textContent = 'Salvando...';
       btn.disabled = true;
 
-      DB.vendas.add(data);
       await enviarParaSheets('venda', data);
 
       btn.textContent = '✓  Registrar Venda';
@@ -454,12 +556,12 @@ function bindEvents(page) {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(this));
       if (!data.produto) return;
+      DB.compras.add(data);
 
       const btn = this.querySelector('[type=submit]');
       btn.textContent = 'Salvando...';
       btn.disabled = true;
 
-      DB.compras.add(data);
       await enviarParaSheets('compra', data);
 
       btn.textContent = '✓  Registrar Compra';
@@ -468,6 +570,41 @@ function bindEvents(page) {
       this.reset();
       document.querySelector('[name=data]').value = fmt.today();
       cQtd.value = '1';
+    });
+  }
+
+  if (page === 'produtos') {
+    document.getElementById('form-produto').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(this));
+      if (!data.nome || !data.categoria) return;
+
+      const proxNum = PRODUTOS.length + 1;
+      const codigo = 'P' + String(proxNum).padStart(3, '0');
+      const novoProduto = [
+        codigo,
+        data.nome.trim(),
+        data.categoria,
+        parseFloat(data.precoVenda) || 0,
+        parseFloat(data.precoCusto) || 0,
+        parseInt(data.estoqueMin) || 0,
+      ];
+
+      PRODUTOS.push(novoProduto);
+      const extras = JSON.parse(localStorage.getItem('brisaria_produtos_extras') || '[]');
+      extras.push(novoProduto);
+      localStorage.setItem('brisaria_produtos_extras', JSON.stringify(extras));
+
+      const btn = this.querySelector('[type=submit]');
+      btn.textContent = 'Salvando...';
+      btn.disabled = true;
+      await enviarParaSheets('cadastrarProduto', {
+        codigo, nome: novoProduto[1], categoria: novoProduto[2],
+        precoVenda: novoProduto[3], precoCusto: novoProduto[4], estoqueMin: novoProduto[5],
+      });
+
+      showToast('✅ Produto cadastrado!');
+      navigate('produtos');
     });
   }
 
@@ -512,7 +649,7 @@ async function salvarSaida() {
 
 function deletarRegistro(tipo, id) {
   if (!confirm('Remover este registro?')) return;
-  if (tipo === 'venda')       DB.vendas.del(id);
+  if (tipo === 'venda')  DB.vendas.del(id);
   else if (tipo === 'compra') DB.compras.del(id);
   else if (tipo === 'saída')  DB.saidas.del(id);
   navigate('historico');
@@ -530,7 +667,7 @@ function exportarCSV() {
     `${s.data},Saída,"${s.descricao}",1,${s.valor},,`
   );
   const csv = [cabecalho, ...linhasV, ...linhasC, ...linhasS].join('\n');
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url;
@@ -539,7 +676,7 @@ function exportarCSV() {
   URL.revokeObjectURL(url);
 }
 
-// ─── ENVIO PARA SHEETS ────────────────────────────────────────
+// ─── SINCRONIZAÇÃO COM GOOGLE SHEETS ─────────────────────────
 async function enviarParaSheets(action, dados) {
   if (!CONFIG.scriptUrl) return;
   try {
@@ -554,7 +691,16 @@ async function enviarParaSheets(action, dados) {
   }
 }
 
-// ─── SINCRONIZAÇÃO DO SHEETS ──────────────────────────────────
+// ─── TOAST ───────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ─── SINCRONIZAÇÃO COM SHEETS ─────────────────────────────────
 async function sincronizarDoSheets() {
   if (!CONFIG.scriptUrl) return;
 
@@ -569,28 +715,14 @@ async function sincronizarDoSheets() {
     if (data.compras) DB._set('brisaria_compras', data.compras);
     if (data.saidas)  DB._set('brisaria_saidas',  data.saidas);
 
-    if (statusEl) {
-      statusEl.textContent = '✅ Sincronizado';
-      setTimeout(() => { statusEl.style.display = 'none'; }, 2000);
-    }
-    navigate(currentPage);
+    if (statusEl) { statusEl.textContent = '✅ Sincronizado'; setTimeout(() => { statusEl.style.display = 'none'; }, 2000); }
+
+    if (document.getElementById('content')) navigate(currentPage);
 
   } catch (err) {
     console.warn('Sem conexão, usando dados locais');
-    if (statusEl) {
-      statusEl.textContent = '📴 Offline — dados locais';
-      setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
-    }
+    if (statusEl) { statusEl.textContent = '📴 Offline — dados locais'; setTimeout(() => { statusEl.style.display = 'none'; }, 3000); }
   }
-}
-
-// ─── TOAST ───────────────────────────────────────────────────
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), 2500);
 }
 
 // ─── INIT ────────────────────────────────────────────────────
