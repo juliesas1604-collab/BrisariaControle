@@ -1,12 +1,9 @@
 // ─── CONFIGURAÇÃO ────────────────────────────────────────────
-// Cole aqui a URL do Apps Script após publicar como Web App
-// (Implantar → Nova implantação → Web App → Copiar URL)
 const CONFIG = {
   scriptUrl: 'https://script.google.com/macros/s/AKfycbzhzXhDHNeHeY1tYTelrLF59ADNy_9BZd7GrQv8vtnMO7X5sCn74yzaAAxVziNqnR0/exec',
 };
 
 // ─── PRODUTOS ────────────────────────────────────────────────
-// [código, nome, categoria, preço venda, preço custo, estoque mínimo]
 const PRODUTOS = [
   ["P001","Tabaco Amsterdam",            "Tabaco",    18, 0,  5],
   ["P002","Tabaco Acrema 20g",           "Tabaco",    18, 0,  5],
@@ -33,23 +30,6 @@ const PRODUTOS = [
   ["P023","Múltiplos Produtos (combo)",  "Combo",      0, 0,  0],
 ];
 
-// ─── SINCRONIZAÇÃO COM APPS SCRIPT ───────────────────────────
-function _enviarParaScript(payload) {
-  if (!CONFIG.scriptUrl) return;
-  fetch(CONFIG.scriptUrl, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  }).catch(() => {}); // fire-and-forget; erros de rede são silenciosos
-}
-
-function _deletarNoScript(tipo, id) {
-  if (!CONFIG.scriptUrl) return;
-  fetch(CONFIG.scriptUrl, {
-    method: 'POST',
-    body: JSON.stringify({ action: 'deletar', tipo, id }),
-  }).catch(() => {});
-}
-
 // ─── DATA LAYER (localStorage + Apps Script) ─────────────────
 const DB = {
   _get: (k) => JSON.parse(localStorage.getItem(k) || '[]'),
@@ -58,47 +38,29 @@ const DB = {
   vendas: {
     all: () => DB._get('brisaria_vendas'),
     add: (v) => {
-      const id = Date.now();
-      const registro = { ...v, id };
       const a = DB.vendas.all();
-      a.push(registro);
+      a.push({ ...v, id: Date.now() });
       DB._set('brisaria_vendas', a);
-      _enviarParaScript({ action: 'venda', ...registro });
     },
-    del: (id) => {
-      DB._set('brisaria_vendas', DB.vendas.all().filter(x => x.id !== id));
-      _deletarNoScript('venda', id);
-    },
+    del: (id) => DB._set('brisaria_vendas', DB.vendas.all().filter(x => x.id !== id)),
   },
   compras: {
     all: () => DB._get('brisaria_compras'),
     add: (c) => {
-      const id = Date.now();
-      const registro = { ...c, id };
       const a = DB.compras.all();
-      a.push(registro);
+      a.push({ ...c, id: Date.now() });
       DB._set('brisaria_compras', a);
-      _enviarParaScript({ action: 'compra', ...registro });
     },
-    del: (id) => {
-      DB._set('brisaria_compras', DB.compras.all().filter(x => x.id !== id));
-      _deletarNoScript('compra', id);
-    },
+    del: (id) => DB._set('brisaria_compras', DB.compras.all().filter(x => x.id !== id)),
   },
   saidas: {
     all: () => DB._get('brisaria_saidas'),
     add: (s) => {
-      const id = Date.now();
-      const registro = { ...s, id };
       const a = DB.saidas.all();
-      a.push(registro);
+      a.push({ ...s, id: Date.now() });
       DB._set('brisaria_saidas', a);
-      _enviarParaScript({ action: 'saida', ...registro });
     },
-    del: (id) => {
-      DB._set('brisaria_saidas', DB.saidas.all().filter(x => x.id !== id));
-      _deletarNoScript('saida', id);
-    },
+    del: (id) => DB._set('brisaria_saidas', DB.saidas.all().filter(x => x.id !== id)),
   },
   estoqueInicial: {
     all: () => JSON.parse(localStorage.getItem('brisaria_estoque') || '{}'),
@@ -148,8 +110,8 @@ function calcDashboard() {
   const compras = DB.compras.all();
   const saidas  = DB.saidas.all();
 
-  const receitaMes  = vendas.filter(v => fmt.monthKey(v.data) === mes).reduce((s, v) => s + (parseFloat(v.valor) || 0), 0);
-  const comprasMes  = compras.filter(c => fmt.monthKey(c.data) === mes).reduce((s, c) => s + (parseFloat(c.custoTotal) || 0), 0);
+  const receitaMes   = vendas.filter(v => fmt.monthKey(v.data) === mes).reduce((s, v) => s + (parseFloat(v.valor) || 0), 0);
+  const comprasMes   = compras.filter(c => fmt.monthKey(c.data) === mes).reduce((s, c) => s + (parseFloat(c.custoTotal) || 0), 0);
   const receitaTotal = vendas.reduce((s, v) => s + (parseFloat(v.valor) || 0), 0);
   const comprasTotal = compras.reduce((s, c) => s + (parseFloat(c.custoTotal) || 0), 0);
   const saidasTotal  = saidas.reduce((s, sd) => s + (parseFloat(sd.valor) || 0), 0);
@@ -190,15 +152,11 @@ const views = {
     const resultClass = resultadoMes >= 0 ? 'card-green' : 'card-red';
 
     const alertas = PRODUTOS
-      .filter(p => p[5] > 0 || true) // inclui todos com estoque finito
       .map(p => ({ nome: p[1], atual: calcEstoque(p[1]), min: p[5] }))
-      .filter(p => p.atual <= p.min && p.min >= 0 && p.nome !== 'Múltiplos Produtos (combo)' && p.nome !== 'Tabaco Solto (dose)')
+      .filter(p => p.min >= 0 && p.nome !== 'Múltiplos Produtos (combo)' && p.nome !== 'Tabaco Solto (dose)')
       .filter(p => p.atual <= 0 || p.atual <= p.min);
 
-    const ultimasVendas = DB.vendas.all()
-      .sort((a, b) => b.id - a.id)
-      .slice(0, 8);
-
+    const ultimasVendas = DB.vendas.all().sort((a, b) => b.id - a.id).slice(0, 8);
     const mesNome = new Date().toLocaleDateString('pt-BR', { month: 'long' });
 
     return `
@@ -396,10 +354,9 @@ const views = {
   },
 
   historico() {
-    const vendas  = DB.vendas.all().map(v  => ({ ...v, _tipo: 'Venda',  _cor: 'green', _valor: v.valor,      _desc: v.produto }));
-    const compras = DB.compras.all().map(c  => ({ ...c, _tipo: 'Compra', _cor: 'red',   _valor: c.custoTotal,  _desc: c.produto }));
-    const saidas  = DB.saidas.all().map(s   => ({ ...s, _tipo: 'Saída',  _cor: 'red',   _valor: s.valor,       _desc: s.descricao }));
-
+    const vendas  = DB.vendas.all().map(v  => ({ ...v, _tipo: 'Venda',  _cor: 'green', _valor: v.valor,     _desc: v.produto }));
+    const compras = DB.compras.all().map(c  => ({ ...c, _tipo: 'Compra', _cor: 'red',   _valor: c.custoTotal, _desc: c.produto }));
+    const saidas  = DB.saidas.all().map(s   => ({ ...s, _tipo: 'Saída',  _cor: 'red',   _valor: s.valor,      _desc: s.descricao }));
     const todos = [...vendas, ...compras, ...saidas].sort((a, b) => b.id - a.id);
 
     if (todos.length === 0) {
@@ -434,7 +391,6 @@ const views = {
 function bindEvents(page) {
 
   if (page === 'venda') {
-    // Botões de pagamento
     document.querySelectorAll('.pay-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.pay-btn').forEach(b => b.classList.remove('active'));
@@ -443,13 +399,12 @@ function bindEvents(page) {
       });
     });
 
-    // Auto-preenche preço ao selecionar produto
     const selProduto = document.getElementById('sel-produto');
-    const inpQtd   = document.getElementById('inp-qtd');
-    const inpValor = document.getElementById('inp-valor');
+    const inpQtd     = document.getElementById('inp-qtd');
+    const inpValor   = document.getElementById('inp-valor');
 
     function atualizarPreco() {
-      const opt = selProduto.selectedOptions[0];
+      const opt   = selProduto.selectedOptions[0];
       const preco = parseFloat(opt?.dataset.preco || 0);
       const qtd   = parseInt(inpQtd.value) || 1;
       if (preco > 0) inpValor.value = (preco * qtd).toFixed(2);
@@ -458,20 +413,19 @@ function bindEvents(page) {
     selProduto.addEventListener('change', atualizarPreco);
     inpQtd.addEventListener('input', atualizarPreco);
 
-    // Submit venda
     document.getElementById('form-venda').addEventListener('submit', async function(e) {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(this));
       if (!data.produto) return;
-      DB.vendas.add(data);
 
       const btn = this.querySelector('[type=submit]');
       btn.textContent = 'Salvando...';
       btn.disabled = true;
 
+      DB.vendas.add(data);
       await enviarParaSheets('venda', data);
 
-      btn.textContent = '✓  Registrar Venda';
+      btn.textContent = '✓  Registrar Venda';
       btn.disabled = false;
       showToast('✅ Venda registrada!');
       this.reset();
@@ -500,12 +454,12 @@ function bindEvents(page) {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(this));
       if (!data.produto) return;
-      DB.compras.add(data);
 
       const btn = this.querySelector('[type=submit]');
       btn.textContent = 'Salvando...';
       btn.disabled = true;
 
+      DB.compras.add(data);
       await enviarParaSheets('compra', data);
 
       btn.textContent = '✓  Registrar Compra';
@@ -521,7 +475,6 @@ function bindEvents(page) {
     document.querySelectorAll('.estoque-input').forEach(input => {
       input.addEventListener('change', function() {
         DB.estoqueInicial.set(this.dataset.produto, this.value);
-        // Atualiza só o número atual sem re-renderizar tudo
         const atual = calcEstoque(this.dataset.produto);
         const item  = this.closest('.estoque-item');
         const span  = item.querySelector('.estoque-atual');
@@ -559,7 +512,7 @@ async function salvarSaida() {
 
 function deletarRegistro(tipo, id) {
   if (!confirm('Remover este registro?')) return;
-  if (tipo === 'venda')  DB.vendas.del(id);
+  if (tipo === 'venda')       DB.vendas.del(id);
   else if (tipo === 'compra') DB.compras.del(id);
   else if (tipo === 'saída')  DB.saidas.del(id);
   navigate('historico');
@@ -577,7 +530,7 @@ function exportarCSV() {
     `${s.data},Saída,"${s.descricao}",1,${s.valor},,`
   );
   const csv = [cabecalho, ...linhasV, ...linhasC, ...linhasS].join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url;
@@ -586,7 +539,7 @@ function exportarCSV() {
   URL.revokeObjectURL(url);
 }
 
-// ─── SINCRONIZAÇÃO COM GOOGLE SHEETS ─────────────────────────
+// ─── ENVIO PARA SHEETS ────────────────────────────────────────
 async function enviarParaSheets(action, dados) {
   if (!CONFIG.scriptUrl) return;
   try {
@@ -601,16 +554,7 @@ async function enviarParaSheets(action, dados) {
   }
 }
 
-// ─── TOAST ───────────────────────────────────────────────────
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), 2500);
-}
-
-// ─── SINCRONIZAÇÃO COM SHEETS ─────────────────────────────────
+// ─── SINCRONIZAÇÃO DO SHEETS ──────────────────────────────────
 async function sincronizarDoSheets() {
   if (!CONFIG.scriptUrl) return;
 
@@ -625,15 +569,28 @@ async function sincronizarDoSheets() {
     if (data.compras) DB._set('brisaria_compras', data.compras);
     if (data.saidas)  DB._set('brisaria_saidas',  data.saidas);
 
-    if (statusEl) { statusEl.textContent = '✅ Sincronizado'; setTimeout(() => { statusEl.style.display = 'none'; }, 2000); }
-
-    // Atualiza o dashboard se estiver nele
-    if (document.getElementById('content')) navigate(currentPage);
+    if (statusEl) {
+      statusEl.textContent = '✅ Sincronizado';
+      setTimeout(() => { statusEl.style.display = 'none'; }, 2000);
+    }
+    navigate(currentPage);
 
   } catch (err) {
     console.warn('Sem conexão, usando dados locais');
-    if (statusEl) { statusEl.textContent = '📴 Offline — dados locais'; setTimeout(() => { statusEl.style.display = 'none'; }, 3000); }
+    if (statusEl) {
+      statusEl.textContent = '📴 Offline — dados locais';
+      setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+    }
   }
+}
+
+// ─── TOAST ───────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2500);
 }
 
 // ─── INIT ────────────────────────────────────────────────────
