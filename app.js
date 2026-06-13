@@ -1,3 +1,10 @@
+// ─── CONFIGURAÇÃO ────────────────────────────────────────────
+// Cole aqui a URL do Apps Script após publicar como Web App
+// (Implantar → Nova implantação → Web App → Copiar URL)
+const CONFIG = {
+  scriptUrl: 'https://script.google.com/macros/s/AKfycbzhzXhDHNeHeY1tYTelrLF59ADNy_9BZd7GrQv8vtnMO7X5sCn74yzaAAxVziNqnR0/exec',
+};
+
 // ─── PRODUTOS ────────────────────────────────────────────────
 // [código, nome, categoria, preço venda, preço custo, estoque mínimo]
 const PRODUTOS = [
@@ -26,25 +33,72 @@ const PRODUTOS = [
   ["P023","Múltiplos Produtos (combo)",  "Combo",      0, 0,  0],
 ];
 
-// ─── DATA LAYER (localStorage) ───────────────────────────────
+// ─── SINCRONIZAÇÃO COM APPS SCRIPT ───────────────────────────
+function _enviarParaScript(payload) {
+  if (!CONFIG.scriptUrl) return;
+  fetch(CONFIG.scriptUrl, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }).catch(() => {}); // fire-and-forget; erros de rede são silenciosos
+}
+
+function _deletarNoScript(tipo, id) {
+  if (!CONFIG.scriptUrl) return;
+  fetch(CONFIG.scriptUrl, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'deletar', tipo, id }),
+  }).catch(() => {});
+}
+
+// ─── DATA LAYER (localStorage + Apps Script) ─────────────────
 const DB = {
   _get: (k) => JSON.parse(localStorage.getItem(k) || '[]'),
   _set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
 
   vendas: {
-    all:   ()  => DB._get('brisaria_vendas'),
-    add:   (v) => { const a = DB.vendas.all(); a.push({ ...v, id: Date.now() }); DB._set('brisaria_vendas', a); },
-    del:   (id) => DB._set('brisaria_vendas', DB.vendas.all().filter(x => x.id !== id)),
+    all: () => DB._get('brisaria_vendas'),
+    add: (v) => {
+      const id = Date.now();
+      const registro = { ...v, id };
+      const a = DB.vendas.all();
+      a.push(registro);
+      DB._set('brisaria_vendas', a);
+      _enviarParaScript({ action: 'venda', ...registro });
+    },
+    del: (id) => {
+      DB._set('brisaria_vendas', DB.vendas.all().filter(x => x.id !== id));
+      _deletarNoScript('venda', id);
+    },
   },
   compras: {
-    all:   ()  => DB._get('brisaria_compras'),
-    add:   (c) => { const a = DB.compras.all(); a.push({ ...c, id: Date.now() }); DB._set('brisaria_compras', a); },
-    del:   (id) => DB._set('brisaria_compras', DB.compras.all().filter(x => x.id !== id)),
+    all: () => DB._get('brisaria_compras'),
+    add: (c) => {
+      const id = Date.now();
+      const registro = { ...c, id };
+      const a = DB.compras.all();
+      a.push(registro);
+      DB._set('brisaria_compras', a);
+      _enviarParaScript({ action: 'compra', ...registro });
+    },
+    del: (id) => {
+      DB._set('brisaria_compras', DB.compras.all().filter(x => x.id !== id));
+      _deletarNoScript('compra', id);
+    },
   },
   saidas: {
-    all:   ()  => DB._get('brisaria_saidas'),
-    add:   (s) => { const a = DB.saidas.all(); a.push({ ...s, id: Date.now() }); DB._set('brisaria_saidas', a); },
-    del:   (id) => DB._set('brisaria_saidas', DB.saidas.all().filter(x => x.id !== id)),
+    all: () => DB._get('brisaria_saidas'),
+    add: (s) => {
+      const id = Date.now();
+      const registro = { ...s, id };
+      const a = DB.saidas.all();
+      a.push(registro);
+      DB._set('brisaria_saidas', a);
+      _enviarParaScript({ action: 'saida', ...registro });
+    },
+    del: (id) => {
+      DB._set('brisaria_saidas', DB.saidas.all().filter(x => x.id !== id));
+      _deletarNoScript('saida', id);
+    },
   },
   estoqueInicial: {
     all: () => JSON.parse(localStorage.getItem('brisaria_estoque') || '{}'),
@@ -238,6 +292,10 @@ const views = {
           <label>Cliente (opcional)</label>
           <input type="text" name="cliente" placeholder="Nome ou apelido">
         </div>
+        <div class="form-group">
+          <label>WhatsApp do cliente <span style="font-weight:400;opacity:.7">(para histórico)</span></label>
+          <input type="tel" name="clienteWpp" placeholder="(XX) XXXXX-XXXX">
+        </div>
         <button type="submit" class="btn-primary">✓&nbsp; Registrar Venda</button>
       </form>
     `;
@@ -401,11 +459,20 @@ function bindEvents(page) {
     inpQtd.addEventListener('input', atualizarPreco);
 
     // Submit venda
-    document.getElementById('form-venda').addEventListener('submit', function(e) {
+    document.getElementById('form-venda').addEventListener('submit', async function(e) {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(this));
       if (!data.produto) return;
       DB.vendas.add(data);
+
+      const btn = this.querySelector('[type=submit]');
+      btn.textContent = 'Salvando...';
+      btn.disabled = true;
+
+      await enviarParaSheets('venda', data);
+
+      btn.textContent = '✓  Registrar Venda';
+      btn.disabled = false;
       showToast('✅ Venda registrada!');
       this.reset();
       document.querySelector('[name=data]').value = fmt.today();
@@ -429,11 +496,20 @@ function bindEvents(page) {
     cQtd.addEventListener('input', calcTotal);
     cUnit.addEventListener('input', calcTotal);
 
-    document.getElementById('form-compra').addEventListener('submit', function(e) {
+    document.getElementById('form-compra').addEventListener('submit', async function(e) {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(this));
       if (!data.produto) return;
       DB.compras.add(data);
+
+      const btn = this.querySelector('[type=submit]');
+      btn.textContent = 'Salvando...';
+      btn.disabled = true;
+
+      await enviarParaSheets('compra', data);
+
+      btn.textContent = '✓  Registrar Compra';
+      btn.disabled = false;
       showToast('✅ Compra registrada!');
       this.reset();
       document.querySelector('[name=data]').value = fmt.today();
@@ -469,13 +545,15 @@ function fecharModalSaida() {
   document.getElementById('modal-saida').classList.add('hidden');
 }
 
-function salvarSaida() {
+async function salvarSaida() {
   const desc  = document.getElementById('saida-desc').value.trim();
   const valor = parseFloat(document.getElementById('saida-valor').value) || 0;
   if (!desc)  return alert('Informe a descrição.');
   if (!valor) return alert('Informe o valor.');
-  DB.saidas.add({ data: fmt.today(), descricao: desc, valor });
+  const saida = { data: fmt.today(), descricao: desc, valor };
+  DB.saidas.add(saida);
   fecharModalSaida();
+  await enviarParaSheets('saida', saida);
   showToast('✅ Saída registrada!');
 }
 
@@ -506,6 +584,21 @@ function exportarCSV() {
   a.download = `brisaria_${fmt.today()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ─── SINCRONIZAÇÃO COM GOOGLE SHEETS ─────────────────────────
+async function enviarParaSheets(action, dados) {
+  if (!CONFIG.scriptUrl) return;
+  try {
+    await fetch(CONFIG.scriptUrl, {
+      method:  'POST',
+      mode:    'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ action, ...dados }),
+    });
+  } catch (err) {
+    console.warn('Sheets offline, dado salvo só localmente:', err);
+  }
 }
 
 // ─── TOAST ───────────────────────────────────────────────────
