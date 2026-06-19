@@ -346,8 +346,19 @@ const views = {
             <input type="text" id="saida-desc" placeholder="Ex: Pro-labore, frete, embalagem...">
           </div>
           <div class="form-group">
-            <label>Valor (R$)</label>
+            <label>Valor em dinheiro (R$) <span style="font-weight:400;opacity:.7">(deixe 0 se for só retirada de produto)</span></label>
             <input type="number" id="saida-valor" placeholder="0.00" step="0.01" min="0">
+          </div>
+          <div class="form-group">
+            <label>Produto retirado do estoque (opcional)</label>
+            <select id="saida-produto">
+              <option value="">Nenhum</option>
+              ${PRODUTOS.filter(p => p[1] !== 'Múltiplos Produtos (combo)').map(p => `<option value="${p[1]}">${p[1]}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Quantidade retirada</label>
+            <input type="number" id="saida-qtd" value="1" min="1">
           </div>
           <div class="modal-btns">
             <button class="btn-secondary" onclick="salvarSaida()">Salvar Saída</button>
@@ -444,7 +455,9 @@ const views = {
   },
 
   historico() {
-    const vendas  = DB.vendas.all().map(v  => ({ ...v, _tipo: 'Venda',  _cor: 'green', _valor: v.valor,      _desc: v.produto }));
+    const vendas  = DB.vendas.all().map(v  => v.pagamento === 'Retirada'
+      ? { ...v, _tipo: 'Retirada', _cor: 'red',   _valor: 0, _desc: `${v.quantidade}x ${v.produto}` }
+      : { ...v, _tipo: 'Venda',    _cor: 'green', _valor: v.valor, _desc: v.produto });
     const compras = DB.compras.all().map(c  => ({ ...c, _tipo: 'Compra', _cor: 'red',   _valor: c.custoTotal,  _desc: c.produto }));
     const saidas  = DB.saidas.all().map(s   => ({ ...s, _tipo: 'Saída',  _cor: 'red',   _valor: s.valor,       _desc: s.descricao }));
 
@@ -627,23 +640,43 @@ function abrirModalSaida() {
 
 function fecharModalSaida() {
   document.getElementById('modal-saida').classList.add('hidden');
+  document.getElementById('saida-desc').value = '';
+  document.getElementById('saida-valor').value = '';
+  document.getElementById('saida-produto').value = '';
+  document.getElementById('saida-qtd').value = '1';
 }
 
 async function salvarSaida() {
-  const desc  = document.getElementById('saida-desc').value.trim();
-  const valor = parseFloat(document.getElementById('saida-valor').value) || 0;
-  if (!desc)  return alert('Informe a descrição.');
-  if (!valor) return alert('Informe o valor.');
-  const saida = { data: fmt.today(), descricao: desc, valor };
-  DB.saidas.add(saida);
+  const desc    = document.getElementById('saida-desc').value.trim();
+  const valor   = parseFloat(document.getElementById('saida-valor').value) || 0;
+  const produto = document.getElementById('saida-produto').value;
+  const qtd     = parseInt(document.getElementById('saida-qtd').value) || 1;
+
+  if (!desc) return alert('Informe a descrição.');
+  if (!valor && !produto) return alert('Informe um valor em dinheiro ou selecione um produto retirado.');
+
+  if (valor > 0) {
+    const saida = { data: fmt.today(), descricao: desc, valor };
+    DB.saidas.add(saida);
+    await enviarParaSheets('saida', saida);
+  }
+
+  if (produto) {
+    const retirada = {
+      data: fmt.today(), produto, quantidade: qtd, valor: 0,
+      pagamento: 'Retirada', cliente: desc || 'Pró-labore (estoque)',
+    };
+    DB.vendas.add(retirada);
+    await enviarParaSheets('venda', retirada);
+  }
+
   fecharModalSaida();
-  await enviarParaSheets('saida', saida);
-  showToast('✅ Saída registrada!');
+  showToast('✅ Retirada registrada!');
 }
 
 function deletarRegistro(tipo, id) {
   if (!confirm('Remover este registro?')) return;
-  if (tipo === 'venda')  DB.vendas.del(id);
+  if (tipo === 'venda' || tipo === 'retirada')  DB.vendas.del(id);
   else if (tipo === 'compra') DB.compras.del(id);
   else if (tipo === 'saída')  DB.saidas.del(id);
   navigate('historico');
