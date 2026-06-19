@@ -41,14 +41,6 @@ const PRODUTOS = [
 })();
 
 // ─── SINCRONIZAÇÃO COM APPS SCRIPT ───────────────────────────
-function _enviarParaScript(payload) {
-  if (!CONFIG.scriptUrl) return;
-  fetch(CONFIG.scriptUrl, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-}
-
 function _deletarNoScript(tipo, id) {
   if (!CONFIG.scriptUrl) return;
   fetch(CONFIG.scriptUrl, {
@@ -70,7 +62,6 @@ const DB = {
       const a = DB.vendas.all();
       a.push(registro);
       DB._set('brisaria_vendas', a);
-      _enviarParaScript({ action: 'venda', ...registro });
     },
     del: (id) => {
       DB._set('brisaria_vendas', DB.vendas.all().filter(x => x.id !== id));
@@ -85,7 +76,6 @@ const DB = {
       const a = DB.compras.all();
       a.push(registro);
       DB._set('brisaria_compras', a);
-      _enviarParaScript({ action: 'compra', ...registro });
     },
     del: (id) => {
       DB._set('brisaria_compras', DB.compras.all().filter(x => x.id !== id));
@@ -100,7 +90,6 @@ const DB = {
       const a = DB.saidas.all();
       a.push(registro);
       DB._set('brisaria_saidas', a);
-      _enviarParaScript({ action: 'saida', ...registro });
     },
     del: (id) => {
       DB._set('brisaria_saidas', DB.saidas.all().filter(x => x.id !== id));
