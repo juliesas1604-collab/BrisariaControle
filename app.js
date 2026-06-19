@@ -579,6 +579,7 @@ function bindEvents(page) {
       const data = Object.fromEntries(new FormData(this));
       if (!data.nome || !data.categoria) return;
 
+      // Gera código sequencial
       const proxNum = PRODUTOS.length + 1;
       const codigo = 'P' + String(proxNum).padStart(3, '0');
       const novoProduto = [
@@ -590,11 +591,13 @@ function bindEvents(page) {
         parseInt(data.estoqueMin) || 0,
       ];
 
+      // Salva localmente
       PRODUTOS.push(novoProduto);
       const extras = JSON.parse(localStorage.getItem('brisaria_produtos_extras') || '[]');
       extras.push(novoProduto);
       localStorage.setItem('brisaria_produtos_extras', JSON.stringify(extras));
 
+      // Envia para Sheets
       const btn = this.querySelector('[type=submit]');
       btn.textContent = 'Salvando...';
       btn.disabled = true;
@@ -612,6 +615,8 @@ function bindEvents(page) {
     document.querySelectorAll('.estoque-input').forEach(input => {
       input.addEventListener('change', function() {
         DB.estoqueInicial.set(this.dataset.produto, this.value);
+        enviarParaSheets('atualizarEstoqueInicial', { produto: this.dataset.produto, quantidade: this.value });
+        // Atualiza só o número atual sem re-renderizar tudo
         const atual = calcEstoque(this.dataset.produto);
         const item  = this.closest('.estoque-item');
         const span  = item.querySelector('.estoque-atual');
@@ -715,6 +720,8 @@ async function sincronizarDoSheets() {
     if (data.compras) DB._set('brisaria_compras', data.compras);
     if (data.saidas)  DB._set('brisaria_saidas',  data.saidas);
 
+    await sincronizarEstoqueDoSheets();
+
     if (statusEl) { statusEl.textContent = '✅ Sincronizado'; setTimeout(() => { statusEl.style.display = 'none'; }, 2000); }
 
     if (document.getElementById('content')) navigate(currentPage);
@@ -722,6 +729,21 @@ async function sincronizarDoSheets() {
   } catch (err) {
     console.warn('Sem conexão, usando dados locais');
     if (statusEl) { statusEl.textContent = '📴 Offline — dados locais'; setTimeout(() => { statusEl.style.display = 'none'; }, 3000); }
+  }
+}
+
+async function sincronizarEstoqueDoSheets() {
+  if (!CONFIG.scriptUrl) return;
+  try {
+    const res  = await fetch(`${CONFIG.scriptUrl}?action=estoque`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+
+    const mapa = DB.estoqueInicial.all();
+    data.forEach(p => { mapa[p.nome] = p.estoqueInicial || 0; });
+    localStorage.setItem('brisaria_estoque', JSON.stringify(mapa));
+  } catch (err) {
+    console.warn('Não foi possível sincronizar estoque da planilha:', err);
   }
 }
 
