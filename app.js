@@ -737,11 +737,19 @@ async function sincronizarEstoqueDoSheets() {
   try {
     const res  = await fetch(`${CONFIG.scriptUrl}?action=estoque`);
     const data = await res.json();
-    if (!Array.isArray(data)) return;
+    if (!Array.isArray(data) || data.length === 0) return;
 
-    const mapa = DB.estoqueInicial.all();
+    // A planilha é a fonte da verdade: substitui o catálogo local inteiro,
+    // evitando produtos com nomes diferentes do app antigo (duplicados/desatualizados).
+    PRODUTOS.length = 0;
+    data.forEach(p => {
+      PRODUTOS.push([p.id, p.nome, p.categoria, p.precoVenda, p.precoCusto, p.minimo]);
+    });
+
+    const mapa = {};
     data.forEach(p => { mapa[p.nome] = p.estoqueInicial || 0; });
     localStorage.setItem('brisaria_estoque', JSON.stringify(mapa));
+    localStorage.removeItem('brisaria_produtos_extras');
   } catch (err) {
     console.warn('Não foi possível sincronizar estoque da planilha:', err);
   }
