@@ -2,7 +2,7 @@
 const CONFIG = {
   scriptUrl: 'https://script.google.com/macros/s/AKfycbzhzXhDHNeHeY1tYTelrLF59ADNy_9BZd7GrQv8vtnMO7X5sCn74yzaAAxVziNqnR0/exec',
 };
-
+ 
 // ─── PRODUTOS ────────────────────────────────────────────────
 // [código, nome, categoria, preço venda, preço custo, estoque mínimo]
 const PRODUTOS = [
@@ -31,7 +31,7 @@ const PRODUTOS = [
   ["P023","Múltiplos Produtos (combo)",  "Combo",      0, 0,  0],
   ["P024","Porta Bic Brisaria",          "Acessório", 15, 9,  5],
 ];
-
+ 
 // ─── PRODUTOS EXTRAS (cadastrados pelo app) ──────────────────
 (function carregarProdutosExtras() {
   const extras = JSON.parse(localStorage.getItem('brisaria_produtos_extras') || '[]');
@@ -39,7 +39,7 @@ const PRODUTOS = [
     if (!PRODUTOS.find(x => x[0] === p[0])) PRODUTOS.push(p);
   });
 })();
-
+ 
 // ─── SINCRONIZAÇÃO COM APPS SCRIPT ───────────────────────────
 function _deletarNoScript(tipo, id) {
   if (!CONFIG.scriptUrl) return;
@@ -48,12 +48,12 @@ function _deletarNoScript(tipo, id) {
     body: JSON.stringify({ action: 'deletar', tipo, id }),
   }).catch(() => {});
 }
-
+ 
 // ─── DATA LAYER (localStorage + Apps Script) ─────────────────
 const DB = {
   _get: (k) => JSON.parse(localStorage.getItem(k) || '[]'),
   _set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
-
+ 
   vendas: {
     all: () => DB._get('brisaria_vendas'),
     add: (v) => {
@@ -105,7 +105,7 @@ const DB = {
     },
   },
 };
-
+ 
 // ─── UTILS ───────────────────────────────────────────────────
 const fmt = {
   money: (v) => {
@@ -125,7 +125,7 @@ const fmt = {
   },
   currentMonth: () => fmt.monthKey(fmt.today()),
 };
-
+ 
 // ─── CÁLCULOS ────────────────────────────────────────────────
 function calcEstoque(nomeProduto) {
   const ei = DB.estoqueInicial.all()[nomeProduto] || 0;
@@ -137,19 +137,19 @@ function calcEstoque(nomeProduto) {
     .reduce((s, v) => s + (parseInt(v.quantidade) || 0), 0);
   return ei + comprado - vendido;
 }
-
+ 
 function calcDashboard() {
   const mes = fmt.currentMonth();
   const vendas  = DB.vendas.all();
   const compras = DB.compras.all();
   const saidas  = DB.saidas.all();
-
+ 
   const receitaMes   = vendas.filter(v => fmt.monthKey(v.data) === mes).reduce((s, v) => s + (parseFloat(v.valor) || 0), 0);
   const comprasMes   = compras.filter(c => fmt.monthKey(c.data) === mes).reduce((s, c) => s + (parseFloat(c.custoTotal) || 0), 0);
   const receitaTotal = vendas.reduce((s, v) => s + (parseFloat(v.valor) || 0), 0);
   const comprasTotal = compras.reduce((s, c) => s + (parseFloat(c.custoTotal) || 0), 0);
   const saidasTotal  = saidas.reduce((s, sd) => s + (parseFloat(sd.valor) || 0), 0);
-
+ 
   return {
     receitaMes,
     comprasMes,
@@ -157,10 +157,10 @@ function calcDashboard() {
     saldo: receitaTotal - comprasTotal - saidasTotal,
   };
 }
-
+ 
 // ─── NAVEGAÇÃO ───────────────────────────────────────────────
 let currentPage = 'dashboard';
-
+ 
 function navigate(page) {
   currentPage = page;
   document.querySelectorAll('.nav-btn').forEach(b => {
@@ -178,26 +178,26 @@ function navigate(page) {
   document.getElementById('content').innerHTML = views[page]();
   bindEvents(page);
 }
-
+ 
 // ─── VIEWS ───────────────────────────────────────────────────
 const views = {
-
+ 
   dashboard() {
     const { receitaMes, comprasMes, resultadoMes, saldo } = calcDashboard();
     const resultClass = resultadoMes >= 0 ? 'card-green' : 'card-red';
-
+ 
     const alertas = PRODUTOS
       .filter(p => p[5] > 0 || true)
       .map(p => ({ nome: p[1], atual: calcEstoque(p[1]), min: p[5] }))
       .filter(p => p.atual <= p.min && p.min >= 0 && p.nome !== 'Múltiplos Produtos (combo)' && p.nome !== 'Tabaco Solto (dose)')
       .filter(p => p.atual <= 0 || p.atual <= p.min);
-
+ 
     const ultimasVendas = DB.vendas.all()
       .sort((a, b) => b.id - a.id)
       .slice(0, 8);
-
+ 
     const mesNome = new Date().toLocaleDateString('pt-BR', { month: 'long' });
-
+ 
     return `
       <div class="cards">
         <div class="card card-green">
@@ -217,7 +217,7 @@ const views = {
           <div class="card-value card-value-big">${fmt.money(saldo)}</div>
         </div>
       </div>
-
+ 
       ${alertas.length > 0 ? `
         <div class="section-title">⚠️ Estoque Baixo</div>
         <div class="alert-list">
@@ -229,7 +229,7 @@ const views = {
           `).join('')}
         </div>
       ` : '<div class="alert-list"><div class="alert-item alert-yellow" style="justify-content:center">✅ Estoque OK em todos os produtos</div></div>'}
-
+ 
       <div class="section-title">Últimas Vendas</div>
       ${ultimasVendas.length === 0 ? `
         <div class="empty">Nenhuma venda registrada ainda.<br>Toque em "Venda" para começar.</div>
@@ -250,7 +250,7 @@ const views = {
       `}
     `;
   },
-
+ 
   venda() {
     return `
       <form id="form-venda" class="form">
@@ -297,7 +297,7 @@ const views = {
       </form>
     `;
   },
-
+ 
   compra() {
     return `
       <form id="form-compra" class="form">
@@ -337,7 +337,7 @@ const views = {
         <button type="submit" class="btn-secondary">✓&nbsp; Registrar Compra</button>
         <button type="button" class="btn-outline" onclick="abrirModalSaida()">+ Saída Avulsa (despesa / pro-labore)</button>
       </form>
-
+ 
       <div id="modal-saida" class="modal hidden">
         <div class="modal-content">
           <h3>Saída Avulsa</h3>
@@ -368,11 +368,11 @@ const views = {
       </div>
     `;
   },
-
+ 
   estoque() {
     const ei = DB.estoqueInicial.all();
     const listaSemCombo = PRODUTOS.filter(p => p[1] !== 'Múltiplos Produtos (combo)');
-
+ 
     return `
       <div class="estoque-header">
         <span>Produto</span>
@@ -402,7 +402,7 @@ const views = {
       </div>
     `;
   },
-
+ 
   produtos() {
     const cats = ['Tabaco','Seda','Piteira','Cuia','Kit','Acessório','Combo'];
     const lista = PRODUTOS.filter(p => p[1] !== 'Múltiplos Produtos (combo)');
@@ -436,7 +436,7 @@ const views = {
         </div>
         <button type="submit" class="btn-primary">+ Cadastrar Produto</button>
       </form>
-
+ 
       <div class="section-title">Produtos Cadastrados</div>
       <div class="transaction-list">
         ${lista.map(p => `
@@ -453,20 +453,20 @@ const views = {
       </div>
     `;
   },
-
+ 
   historico() {
     const vendas  = DB.vendas.all().map(v  => v.pagamento === 'Retirada'
       ? { ...v, _tipo: 'Retirada', _cor: 'red',   _valor: 0, _desc: `${v.quantidade}x ${v.produto}` }
       : { ...v, _tipo: 'Venda',    _cor: 'green', _valor: v.valor, _desc: v.produto });
     const compras = DB.compras.all().map(c  => ({ ...c, _tipo: 'Compra', _cor: 'red',   _valor: c.custoTotal,  _desc: c.produto }));
     const saidas  = DB.saidas.all().map(s   => ({ ...s, _tipo: 'Saída',  _cor: 'red',   _valor: s.valor,       _desc: s.descricao }));
-
+ 
     const todos = [...vendas, ...compras, ...saidas].sort((a, b) => b.id - a.id);
-
+ 
     if (todos.length === 0) {
       return '<div class="empty">Nenhum registro ainda.<br>Registre vendas e compras para ver o histórico.</div>';
     }
-
+ 
     return `
       <div class="transaction-list">
         ${todos.map(t => `
@@ -490,10 +490,10 @@ const views = {
     `;
   },
 };
-
+ 
 // ─── BIND EVENTS ─────────────────────────────────────────────
 function bindEvents(page) {
-
+ 
   if (page === 'venda') {
     document.querySelectorAll('.pay-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -502,33 +502,33 @@ function bindEvents(page) {
         document.querySelector('[name=pagamento]').value = btn.dataset.pay;
       });
     });
-
+ 
     const selProduto = document.getElementById('sel-produto');
     const inpQtd   = document.getElementById('inp-qtd');
     const inpValor = document.getElementById('inp-valor');
-
+ 
     function atualizarPreco() {
       const opt = selProduto.selectedOptions[0];
       const preco = parseFloat(opt?.dataset.preco || 0);
       const qtd   = parseInt(inpQtd.value) || 1;
       if (preco > 0) inpValor.value = (preco * qtd).toFixed(2);
     }
-
+ 
     selProduto.addEventListener('change', atualizarPreco);
     inpQtd.addEventListener('input', atualizarPreco);
-
+ 
     document.getElementById('form-venda').addEventListener('submit', async function(e) {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(this));
       if (!data.produto) return;
       DB.vendas.add(data);
-
+ 
       const btn = this.querySelector('[type=submit]');
       btn.textContent = 'Salvando...';
       btn.disabled = true;
-
+ 
       await enviarParaSheets('venda', data);
-
+ 
       btn.textContent = '✓  Registrar Venda';
       btn.disabled = false;
       showToast('✅ Venda registrada!');
@@ -539,33 +539,33 @@ function bindEvents(page) {
       inpQtd.value = '1';
     });
   }
-
+ 
   if (page === 'compra') {
     const cQtd   = document.getElementById('c-qtd');
     const cUnit  = document.getElementById('c-unit');
     const cTotal = document.getElementById('c-total');
-
+ 
     function calcTotal() {
       const qtd  = parseFloat(cQtd.value)  || 0;
       const unit = parseFloat(cUnit.value) || 0;
       if (qtd > 0 && unit > 0) cTotal.value = (qtd * unit).toFixed(2);
     }
-
+ 
     cQtd.addEventListener('input', calcTotal);
     cUnit.addEventListener('input', calcTotal);
-
+ 
     document.getElementById('form-compra').addEventListener('submit', async function(e) {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(this));
       if (!data.produto) return;
       DB.compras.add(data);
-
+ 
       const btn = this.querySelector('[type=submit]');
       btn.textContent = 'Salvando...';
       btn.disabled = true;
-
+ 
       await enviarParaSheets('compra', data);
-
+ 
       btn.textContent = '✓  Registrar Compra';
       btn.disabled = false;
       showToast('✅ Compra registrada!');
@@ -574,13 +574,13 @@ function bindEvents(page) {
       cQtd.value = '1';
     });
   }
-
+ 
   if (page === 'produtos') {
     document.getElementById('form-produto').addEventListener('submit', async function(e) {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(this));
       if (!data.nome || !data.categoria) return;
-
+ 
       // Gera código sequencial
       const proxNum = PRODUTOS.length + 1;
       const codigo = 'P' + String(proxNum).padStart(3, '0');
@@ -592,13 +592,13 @@ function bindEvents(page) {
         parseFloat(data.precoCusto) || 0,
         parseInt(data.estoqueMin) || 0,
       ];
-
+ 
       // Salva localmente
       PRODUTOS.push(novoProduto);
       const extras = JSON.parse(localStorage.getItem('brisaria_produtos_extras') || '[]');
       extras.push(novoProduto);
       localStorage.setItem('brisaria_produtos_extras', JSON.stringify(extras));
-
+ 
       // Envia para Sheets
       const btn = this.querySelector('[type=submit]');
       btn.textContent = 'Salvando...';
@@ -607,12 +607,12 @@ function bindEvents(page) {
         codigo, nome: novoProduto[1], categoria: novoProduto[2],
         precoVenda: novoProduto[3], precoCusto: novoProduto[4], estoqueMin: novoProduto[5],
       });
-
+ 
       showToast('✅ Produto cadastrado!');
       navigate('produtos');
     });
   }
-
+ 
   if (page === 'estoque') {
     document.querySelectorAll('.estoque-input').forEach(input => {
       input.addEventListener('change', function() {
@@ -632,12 +632,12 @@ function bindEvents(page) {
     });
   }
 }
-
+ 
 // ─── AÇÕES GLOBAIS ───────────────────────────────────────────
 function abrirModalSaida() {
   document.getElementById('modal-saida').classList.remove('hidden');
 }
-
+ 
 function fecharModalSaida() {
   document.getElementById('modal-saida').classList.add('hidden');
   document.getElementById('saida-desc').value = '';
@@ -645,22 +645,22 @@ function fecharModalSaida() {
   document.getElementById('saida-produto').value = '';
   document.getElementById('saida-qtd').value = '1';
 }
-
+ 
 async function salvarSaida() {
   const desc    = document.getElementById('saida-desc').value.trim();
   const valor   = parseFloat(document.getElementById('saida-valor').value) || 0;
   const produto = document.getElementById('saida-produto').value;
   const qtd     = parseInt(document.getElementById('saida-qtd').value) || 1;
-
+ 
   if (!desc) return alert('Informe a descrição.');
   if (!valor && !produto) return alert('Informe um valor em dinheiro ou selecione um produto retirado.');
-
+ 
   if (valor > 0) {
     const saida = { data: fmt.today(), descricao: desc, valor };
     DB.saidas.add(saida);
     await enviarParaSheets('saida', saida);
   }
-
+ 
   if (produto) {
     const retirada = {
       data: fmt.today(), produto, quantidade: qtd, valor: 0,
@@ -669,11 +669,11 @@ async function salvarSaida() {
     DB.vendas.add(retirada);
     await enviarParaSheets('venda', retirada);
   }
-
+ 
   fecharModalSaida();
   showToast('✅ Retirada registrada!');
 }
-
+ 
 function deletarRegistro(tipo, id) {
   if (!confirm('Remover este registro?')) return;
   if (tipo === 'venda' || tipo === 'retirada')  DB.vendas.del(id);
@@ -681,7 +681,7 @@ function deletarRegistro(tipo, id) {
   else if (tipo === 'saída')  DB.saidas.del(id);
   navigate('historico');
 }
-
+ 
 function exportarCSV() {
   const cabecalho = 'Data,Tipo,Descricao,Qtd,Valor,Pagamento,Cliente';
   const linhasV = DB.vendas.all().map(v =>
@@ -702,7 +702,7 @@ function exportarCSV() {
   a.click();
   URL.revokeObjectURL(url);
 }
-
+ 
 // ─── SINCRONIZAÇÃO COM GOOGLE SHEETS ─────────────────────────
 async function enviarParaSheets(action, dados) {
   if (!CONFIG.scriptUrl) return;
@@ -717,7 +717,7 @@ async function enviarParaSheets(action, dados) {
     console.warn('Sheets offline, dado salvo só localmente:', err);
   }
 }
-
+ 
 // ─── TOAST ───────────────────────────────────────────────────
 function showToast(msg) {
   const t = document.getElementById('toast');
@@ -726,48 +726,86 @@ function showToast(msg) {
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.classList.remove('show'), 2500);
 }
-
+ 
 // ─── SINCRONIZAÇÃO COM SHEETS ─────────────────────────────────
 async function sincronizarDoSheets() {
   if (!CONFIG.scriptUrl) return;
-
+ 
   const statusEl = document.getElementById('sync-status');
   if (statusEl) { statusEl.textContent = '🔄 Sincronizando...'; statusEl.style.display = 'block'; }
-
+ 
   try {
     const res  = await fetch(`${CONFIG.scriptUrl}?action=historico`);
     const data = await res.json();
-
-    if (data.vendas)  DB._set('brisaria_vendas',  data.vendas);
-    if (data.compras) DB._set('brisaria_compras', data.compras);
-    if (data.saidas)  DB._set('brisaria_saidas',  data.saidas);
-
+ 
+    if (Array.isArray(data)) {
+      // Formato atual do Apps Script: lista única com _tipo/_desc/_valor.
+      const { vendas, compras, saidas } = converterHistorico(data);
+      DB._set('brisaria_vendas',  vendas);
+      DB._set('brisaria_compras', compras);
+      DB._set('brisaria_saidas',  saidas);
+    } else {
+      if (data.vendas)  DB._set('brisaria_vendas',  data.vendas);
+      if (data.compras) DB._set('brisaria_compras', data.compras);
+      if (data.saidas)  DB._set('brisaria_saidas',  data.saidas);
+    }
+ 
     await sincronizarEstoqueDoSheets();
-
+ 
     if (statusEl) { statusEl.textContent = '✅ Sincronizado'; setTimeout(() => { statusEl.style.display = 'none'; }, 2000); }
-
+ 
     if (document.getElementById('content')) navigate(currentPage);
-
+ 
   } catch (err) {
     console.warn('Sem conexão, usando dados locais');
     if (statusEl) { statusEl.textContent = '📴 Offline — dados locais'; setTimeout(() => { statusEl.style.display = 'none'; }, 3000); }
   }
 }
-
+ 
+// Converte a resposta do Apps Script (lista única) para o formato do app.
+function converterHistorico(lista) {
+  const dataISO = (d) => {
+    if (!d) return '';
+    const s = String(d);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const dt = new Date(s);
+    if (isNaN(dt)) return s.slice(0, 10);
+    // Sheets manda meia-noite de Brasília em UTC (T03:00Z); converte para a data local de SP.
+    return new Date(dt.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  };
+  const num = (v) => parseFloat(String(v ?? '').replace(',', '.')) || 0;
+ 
+  const vendas = [], compras = [], saidas = [];
+  lista.forEach(x => {
+    if (!x || !x.id || (!x._desc && !x._valor)) return; // ignora linhas vazias da planilha
+    const base = { id: Number(x.id), data: dataISO(x.data) };
+    if (x._tipo === 'Venda') {
+      vendas.push({ ...base, produto: x._desc || '', quantidade: x.quantidade || 1,
+        valor: num(x._valor), pagamento: x.pagamento || '', cliente: x.cliente || '' });
+    } else if (x._tipo === 'Compra') {
+      compras.push({ ...base, produto: x._desc || '', quantidade: x.quantidade || 1,
+        custoTotal: num(x._valor), fornecedor: x.fornecedor || '' });
+    } else {
+      saidas.push({ ...base, descricao: x._desc || '', valor: num(x._valor) });
+    }
+  });
+  return { vendas, compras, saidas };
+}
+ 
 async function sincronizarEstoqueDoSheets() {
   if (!CONFIG.scriptUrl) return;
   try {
     const res  = await fetch(`${CONFIG.scriptUrl}?action=estoque`);
     const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) return;
-
+ 
     // A planilha é a fonte da verdade: substitui o catálogo local inteiro,
     // evitando produtos com nomes diferentes do app antigo (duplicados/desatualizados).
     PRODUTOS.length = 0;
     data.forEach(p => {
       PRODUTOS.push([p.id, p.nome, p.categoria, p.precoVenda, p.precoCusto, p.minimo]);
     });
-
+ 
     const mapa = {};
     data.forEach(p => { mapa[p.nome] = p.estoqueInicial || 0; });
     localStorage.setItem('brisaria_estoque', JSON.stringify(mapa));
@@ -776,7 +814,7 @@ async function sincronizarEstoqueDoSheets() {
     console.warn('Não foi possível sincronizar estoque da planilha:', err);
   }
 }
-
+ 
 // ─── INIT ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   navigate('dashboard');
@@ -785,3 +823,4 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 });
+ 
